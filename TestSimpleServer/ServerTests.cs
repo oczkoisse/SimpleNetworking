@@ -1,0 +1,118 @@
+﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+using SimpleServer;
+using System;
+using System.Threading;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+
+namespace SimpleServer.Tests
+{
+    [TestClass()]
+    public class ServerTests
+    {
+        Server server;
+        
+
+    [TestInitialize]
+        public void SetupServer()
+        {
+            server = new Server(8000);
+            server.Start();
+        }
+
+        [TestCleanup]
+        public void StopServer()
+        {
+            server.Stop();
+        }
+        
+
+        [TestMethod()]
+        public void ConnectTest()
+        {
+            var waitTillConnected = new ManualResetEvent(false);
+            server.Connected += (object sender, ConnectedEventArgs args) =>
+            {
+                if (args.Succeeded)
+                {
+                    waitTillConnected.Set();
+                }
+            };
+
+            TcpClient c = new TcpClient();
+            c.Connect(server.Address);
+
+            waitTillConnected.WaitOne(100);
+        }
+
+        [TestMethod()]
+        public void SendTest()
+        {
+            Token token = null;
+            var waitTillConnected = new ManualResetEvent(false);
+            server.Connected += (object sender, ConnectedEventArgs args) =>
+            {
+                if (args.Succeeded)
+                {
+                    token = args.GetToken();
+                    waitTillConnected.Set();
+                }
+            };
+
+            TcpClient c = new TcpClient();
+            c.Connect(server.Address);
+
+            waitTillConnected.WaitOne(100);
+            
+            var waitTillSent = new ManualResetEvent(false);
+            server.Sent += (object sender, SentEventArgs args) =>
+            {
+                if (args.Succeeded)
+                    waitTillSent.Set();
+            };
+
+            server.Send(token, new Packet(new byte[100]));
+            waitTillSent.WaitOne(100);
+        }
+
+        [TestMethod()]
+        public void ReceiveTest()
+        {
+            Token token = null;
+            var waitTillConnected = new ManualResetEvent(false);
+            server.Connected += (object sender, ConnectedEventArgs args) =>
+            {
+                if (args.Succeeded)
+                {
+                    token = args.GetToken();
+                    waitTillConnected.Set();
+                }
+            };
+
+            TcpClient c = new TcpClient();
+            c.Connect(server.Address);
+
+            waitTillConnected.WaitOne(100);
+
+            
+            string sent = "Hello";
+            var waitTillReceived = new ManualResetEvent(false);
+            server.Received += (object sender, ReceivedEventArgs args) =>
+            {
+                if (args.Succeeded)
+                {
+                    string received = Encoding.ASCII.GetString(args.UnderlyingPacket.Data);
+                    Assert.IsTrue(received == sent);
+                    waitTillReceived.Set();
+                }
+            };
+
+            var stream = c.GetStream();
+            byte[] sentData = Encoding.ASCII.GetBytes(sent);
+            stream.Write(sentData, 0, sentData.Length);
+            
+            waitTillReceived.WaitOne(100);
+        }
+    }
+}

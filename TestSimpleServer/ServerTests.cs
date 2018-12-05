@@ -14,7 +14,7 @@ namespace SimpleServer.Tests
         Server server;
         
 
-    [TestInitialize]
+        [TestInitialize]
         public void SetupServer()
         {
             server = new Server(8000);
@@ -64,7 +64,9 @@ namespace SimpleServer.Tests
             c.Connect(server.Address);
 
             waitTillConnected.WaitOne(100);
-            
+
+            string sent = "Hello";
+
             var waitTillSent = new ManualResetEvent(false);
             server.Sent += (object sender, SentEventArgs args) =>
             {
@@ -72,8 +74,16 @@ namespace SimpleServer.Tests
                     waitTillSent.Set();
             };
 
-            server.Send(token, new Packet(new byte[100]));
+            byte[] sentData = Encoding.ASCII.GetBytes(sent);
+            server.Send(token, new Packet(sentData));
             waitTillSent.WaitOne(100);
+
+            var stream = c.GetStream();
+            byte[] lengthData = new byte[4];
+            stream.Read(lengthData, 0, lengthData.Length);
+            byte[] actualData = new byte[BitConverter.ToInt32(lengthData, 0)];
+            stream.Read(actualData, 0, actualData.Length);
+            Assert.IsTrue(Encoding.ASCII.GetString(actualData) == sent);
         }
 
         [TestMethod()]

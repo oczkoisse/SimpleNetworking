@@ -12,6 +12,7 @@ namespace SimpleServer.Tests
     public class ServerTests
     {
         Server server;
+        TcpClient c;
         
 
         [TestInitialize]
@@ -19,6 +20,7 @@ namespace SimpleServer.Tests
         {
             server = new Server(8000);
             server.Start();
+            c = new TcpClient();
         }
 
         [TestCleanup]
@@ -40,7 +42,6 @@ namespace SimpleServer.Tests
                 }
             };
 
-            TcpClient c = new TcpClient();
             c.Connect(server.Address);
 
             waitTillConnected.WaitOne(100);
@@ -59,8 +60,7 @@ namespace SimpleServer.Tests
                     waitTillConnected.Set();
                 }
             };
-
-            TcpClient c = new TcpClient();
+            
             c.Connect(server.Address);
 
             waitTillConnected.WaitOne(100);
@@ -99,8 +99,7 @@ namespace SimpleServer.Tests
                     waitTillConnected.Set();
                 }
             };
-
-            TcpClient c = new TcpClient();
+            
             c.Connect(server.Address);
 
             waitTillConnected.WaitOne(100);

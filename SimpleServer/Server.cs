@@ -1,27 +1,26 @@
 ﻿using System;
-using System.IO;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
-using System.Threading;
 
 namespace SimpleServer
 {
     public class Server
     {
-        private ConcurrentDictionary<Token, TcpClient> clients;
-        private TcpListener listener;
-
-        #region Events
+        // For subscribing to new connections
         public event EventHandler<ConnectedEventArgs> Connected;
-        public event EventHandler<SentEventArgs> Sent;
-        public event EventHandler<ReceivedEventArgs> Received;
-        #endregion
 
+        // Faking a HashSet
+        private ConcurrentDictionary<Connection, byte> connections;
+        
+        // Underlying listener for this server
+        private TcpListener listener;
+        
+        
         public Server(IPAddress address, int port)
         {
             listener = new TcpListener(address, port);
-            clients = new ConcurrentDictionary<Token, TcpClient>();
+            connections = new ConcurrentDictionary<Connection, byte>();
         }
 
         public IPEndPoint Address
@@ -29,143 +28,92 @@ namespace SimpleServer
             get { return (IPEndPoint)listener.LocalEndpoint; }
         }
 
-        public void Start()
-        {
-            listener.Start();
-            BeginAccept();
-        }
 
         public Server(int port): this(IPAddress.Loopback, port) { }
 
-        #region Implementation
+        #region Connection accept callbacks
         private void BeginAccept()
         {
             try
             {
                 listener.BeginAcceptTcpClient(DoAccept, null);
             }
+            catch(ObjectDisposedException)
+            {
+                // Server is stopped
+                // Can't do anything other than not listen anymore
+            }
             catch (Exception ex)
             {
-                Connected(this, new ConnectedEventArgs(ex));
+                Connected?.Invoke(this, new ConnectedEventArgs(ex));
             }
         }
         private void DoAccept(IAsyncResult res)
         {
-            TcpClient client = listener.EndAcceptTcpClient(res);
-            Token token = new Token();
-            if (clients.TryAdd(token, client))
+            TcpClient client = null;
+            try
             {
-                Connected(this, new ConnectedEventArgs(token));
-                BeginReadClient(token);
+                client = listener.EndAcceptTcpClient(res);
             }
-            else
+            catch(ObjectDisposedException)
             {
-                Connected(this, new ConnectedEventArgs(new Exception("Failed to add connection")));
+                // Server is stopped
+                // Can't do anything other than not listen anymore
             }
-            BeginAccept();
-        }
-        
-        private void BeginReadClient(Token token)
-        {
-            if (clients.TryGetValue(token, out TcpClient client))
+            catch (Exception ex)
             {
-                if (TryGetStream(client, out NetworkStream networkStream))
+                Connected?.Invoke(this, new ConnectedEventArgs(ex));
+            }
+
+            if (client != null)
+            {
+                BeginAccept();
+
+                Connection conn = new Connection(client, this);
+                if (connections.TryAdd(conn, 0))
                 {
-                    AsyncReadOperation readOp = new AsyncReadOperation(4, token, networkStream, OnReadLength);
-                    readOp.Start();
+                    Connected?.Invoke(this, new ConnectedEventArgs(conn));
+                }
+                else
+                {
+                    Connected?.Invoke(this, new ConnectedEventArgs(new Exception("Unable to add connection")));
                 }
             }
         }
-
-        private void OnReadLength(AsyncReadOperation readLengthOp)
-        {
-            if (readLengthOp.Successful)
-            {
-                int length = BitConverter.ToInt32(readLengthOp.Bytes, 0);
-                AsyncReadOperation readDataOp = new AsyncReadOperation(length, readLengthOp.Token, readLengthOp.UnderlyingStream, OnReadData);
-                readDataOp.Start();
-            }
-        }
-
-        private void OnReadData(AsyncReadOperation readDataOp)
-        {
-            Packet packet = new Packet(readDataOp.Bytes);
-
-            if (readDataOp.Successful)
-            {
-                Received(this, new ReceivedEventArgs(readDataOp.Token, packet));
-                BeginReadClient(readDataOp.Token);
-            }
-            else
-            {
-                Received(this, new ReceivedEventArgs(readDataOp.Token, packet, readDataOp.ThrownException));
-            }
-        }
-
-        private bool TryGetStream(TcpClient client, out NetworkStream networkStream)
-        {
-            try
-            {
-                networkStream = client.GetStream();
-            }
-            catch (ObjectDisposedException)
-            {
-                // The TcpClient has been closed.
-                networkStream = null;
-            }
-            return networkStream != null;
-        }
-        
         #endregion
 
         #region Public API
+        public void Start()
+        {
+            listener.Start();
+            // Initiate the connection accepting loop asynchronously
+            BeginAccept();
+        }
+
         public void Stop()
         {
             // listener.Stop() does not close any accepted connections. 
-            // so close them manually
-            foreach (TcpClient client in clients.Values)
+            // so close them manually. This is thread-safe way of iterating.
+            foreach (var keyValue in connections)
             {
-                client.Close();
+                // Close the connection
+                keyValue.Key.Close();
             }
-            clients.Clear();
             // Close the listener finally
             listener.Stop();
         }
 
-        public void Disconnect(Token token)
+        internal void Remove(Connection conn)
         {
-            if (token != null)
+            if (conn != null)
             {
-                if (clients.TryRemove(token, out TcpClient client))
+                if (!connections.TryRemove(conn, out byte _))
                 {
-                    client.Close();
+                    throw new ArgumentException("Connection passed to Disconnect() does not exist in Server (probably already disconnected)");
                 }
             }
-        }
-
-        public void Send(Token token, Packet packet)
-        {
-            if (clients.TryGetValue(token, out TcpClient client))
-            {
-                if (TryGetStream(client, out NetworkStream networkStream))
-                {
-                    if (networkStream.CanWrite)
-                    {
-                        try
-                        {
-                            // TODO: Protect NetworkStream against concurrent writes
-                            // For now, this is done by doing the writes sequentially (blocking)
-                            networkStream.Write(BitConverter.GetBytes(packet.Length), 0, 4);
-                            networkStream.Write(packet.Data, 0, packet.Length);
-                            Sent(this, new SentEventArgs(token, packet));
-                        }
-                        catch (Exception ex)
-                        {
-                            Sent(this, new SentEventArgs(token, packet, ex));
-                        }
-                    }
-                }
-            }
+            else
+                throw new ArgumentNullException("Connection argument is null");
         }
         #endregion
     }

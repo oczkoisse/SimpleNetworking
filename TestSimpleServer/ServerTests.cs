@@ -1,10 +1,10 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
-using SimpleServer;
 using System;
 using System.Threading;
-using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Linq;
+using System.Collections.Generic;
 
 namespace SimpleServer.Tests
 {
@@ -12,15 +12,12 @@ namespace SimpleServer.Tests
     public class ServerTests
     {
         Server server;
-        TcpClient c;
-        
 
         [TestInitialize]
         public void SetupServer()
         {
             server = new Server(8000);
             server.Start();
-            c = new TcpClient();
         }
 
         [TestCleanup]
@@ -33,95 +30,185 @@ namespace SimpleServer.Tests
         [TestMethod()]
         public void ConnectTest()
         {
-            var waitTillConnected = new ManualResetEvent(false);
+            ManualResetEvent connectCompleted = new ManualResetEvent(false);
             server.Connected += (object sender, ConnectedEventArgs args) =>
             {
-                if (args.Succeeded)
+                if (args.OperationSucceeded)
                 {
-                    waitTillConnected.Set();
+                    connectCompleted.Set();
                 }
+                else
+                    throw args.GetException();
             };
 
-            c.Connect(server.Address);
-
-            waitTillConnected.WaitOne(100);
+            Connection client = new Connection();
+            client.Open(server.Address);
+            connectCompleted.WaitOne();
+            client.Close();
         }
 
         [TestMethod()]
-        public void SendTest()
+        public void ServerSendTest()
         {
-            Token token = null;
-            var waitTillConnected = new ManualResetEvent(false);
+            const int totalSends = 10;
+
+            string sent = "Hello";
+            
             server.Connected += (object sender, ConnectedEventArgs args) =>
             {
-                if (args.Succeeded)
+                if (args.OperationSucceeded)
                 {
-                    token = args.GetToken();
-                    waitTillConnected.Set();
+                    Connection conn = args.GetConnection();
+                    Packet packet = new Packet(Encoding.ASCII.GetBytes(sent));
+                    for (int i = 0; i < totalSends; i++)
+                        conn.Write(packet);
+                    conn.Close();
                 }
             };
             
-            c.Connect(server.Address);
+            Connection client = new Connection();
 
-            waitTillConnected.WaitOne(100);
+            CountdownEvent countdown = new CountdownEvent(totalSends);
+
+            client.Received += (object sender, ReceivedEventArgs args) =>
+            {
+                if (args.OperationSucceeded)
+                {
+                    Packet packet = args.GetPacket();
+                    byte[] data = packet.DataAsCopy;
+                    string recvd = Encoding.ASCII.GetString(data);
+                    Assert.IsTrue(recvd == sent);
+                    countdown.Signal();
+                }
+            };
+
+            client.Open(server.Address);
+            countdown.Wait();
+            client.Close();
+        }
+        
+        [TestMethod()]
+        public void ServerReceiveTest()
+        {
+            const int totalReceives = 10;
+
+            CountdownEvent countdown = new CountdownEvent(totalReceives);
 
             string sent = "Hello";
 
-            var waitTillSent = new ManualResetEvent(false);
-            server.Sent += (object sender, SentEventArgs args) =>
+            server.Connected += (object sender, ConnectedEventArgs args) =>
             {
-                if (args.Succeeded)
-                    waitTillSent.Set();
+                if (args.OperationSucceeded)
+                {
+                    Connection conn = args.GetConnection();
+                    conn.Received += (object rsender, ReceivedEventArgs rargs) =>
+                    {
+                        if (rargs.OperationSucceeded)
+                        {
+                            Packet rpacket = rargs.GetPacket();
+                            byte[] rdata = rpacket.DataAsCopy;
+                            string recvd = Encoding.ASCII.GetString(rdata);
+                            Assert.IsTrue(recvd == sent);
+                            countdown.Signal();
+                        }
+                    };
+                }
             };
 
-            byte[] sentData = Encoding.ASCII.GetBytes(sent);
-            server.Send(token, new Packet(sentData));
-            waitTillSent.WaitOne(100);
+            Connection client = new Connection();
+            client.Open(server.Address);
 
-            var stream = c.GetStream();
-            byte[] lengthData = new byte[4];
-            stream.Read(lengthData, 0, lengthData.Length);
-            byte[] actualData = new byte[BitConverter.ToInt32(lengthData, 0)];
-            stream.Read(actualData, 0, actualData.Length);
-            Assert.IsTrue(Encoding.ASCII.GetString(actualData) == sent);
+            Packet packet = new Packet(Encoding.ASCII.GetBytes(sent));
+            for (int i = 0; i < totalReceives; i++)
+                client.Write(packet);
+            
+            countdown.Wait();
+            client.Close();
+        }
+    }
+
+    [TestClass()]
+    public class EchoServerTest
+    {
+        Server server;
+
+        [TestInitialize()]
+        public void Setup()
+        {
+            server = new Server(9000);
+            server.Connected += (object sender, ConnectedEventArgs args) =>
+            {
+                if (args.OperationSucceeded)
+                {
+                    Connection conn = args.GetConnection();
+                    conn.Received += (object rsender, ReceivedEventArgs rargs) =>
+                    {
+                        Packet packet = rargs.GetPacket();
+                        Connection rconn = rargs.GetConnection();
+                        rconn.Write(packet);
+                    };
+                }
+            };
+            server.Start();
         }
 
-        [TestMethod()]
-        public void ReceiveTest()
+        public static string RandomString(int length)
         {
-            Token token = null;
-            var waitTillConnected = new ManualResetEvent(false);
-            server.Connected += (object sender, ConnectedEventArgs args) =>
+            Random random = new Random();
+            const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+            return new string(Enumerable.Repeat(chars, length)
+              .Select(s => s[random.Next(s.Length)]).ToArray());
+        }
+
+        private void ClientThread()
+        {
+            Connection conn = new Connection();
+            List<string> sent = new List<string>();
+            
+            const int totalSends = 10;
+            CountdownEvent countdown = new CountdownEvent(totalSends);
+
+            conn.Received += (object sender, ReceivedEventArgs args) =>
             {
-                if (args.Succeeded)
+                if (args.OperationSucceeded)
                 {
-                    token = args.GetToken();
-                    waitTillConnected.Set();
+                    Packet packet = args.GetPacket();
+                    byte[] rdata = packet.DataAsCopy;
+                    string r = Encoding.ASCII.GetString(rdata);
+                    Assert.IsTrue(r == sent[countdown.CurrentCount]);
+                    countdown.Signal();
                 }
             };
-            
-            c.Connect(server.Address);
 
-            waitTillConnected.WaitOne(100);
+            conn.Open(server.Address);
 
-            
-            string sent = "Hello";
-            var waitTillReceived = new ManualResetEvent(false);
-            server.Received += (object sender, ReceivedEventArgs args) =>
+            for (int j=0; j<10;j++)
             {
-                if (args.Succeeded)
-                {
-                    string received = Encoding.ASCII.GetString(args.UnderlyingPacket.Data);
-                    Assert.IsTrue(received == sent);
-                    waitTillReceived.Set();
-                }
-            };
+                string s = RandomString(10000);
+                Packet p = new Packet(Encoding.ASCII.GetBytes(s));
+                sent.Add(s);
+                conn.Write(p);
+            }
 
-            var stream = c.GetStream();
-            byte[] sentData = Encoding.ASCII.GetBytes(sent);
-            stream.Write(sentData, 0, sentData.Length);
-            
-            waitTillReceived.WaitOne(100);
+            countdown.Wait();
+            conn.Close();
+        }
+
+
+        [TestMethod()]
+        public void PutLoad()
+        {
+            for(int i=0; i<1000; i++)
+            {
+                Thread t = new Thread(new ThreadStart(ClientThread));
+                t.Start();
+            }
+        }
+
+        [TestCleanup()]
+        public void Stop()
+        {
+            server.Stop();
         }
     }
 }

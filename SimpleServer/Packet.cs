@@ -6,22 +6,49 @@ namespace SimpleServer
     {
         public Packet(byte[] data)
         {
-            Data = data ?? throw new ArgumentNullException("null bytes array passed to Packet");
+            if (data == null)
+            {
+                throw new ArgumentNullException("data array cannot be null");
+            }
+
+            FullData = new byte[4 + data.Length];
+
+            BitConverter.GetBytes(data.Length).CopyTo(FullData, 0);
+            data.CopyTo(FullData, 4);
+
+            Data = new ArraySegment<byte>(FullData, 0, data.Length);
         }
         
-        public byte[] Data
+        
+        public ArraySegment<byte> Data
+        {
+            get;
+        }
+
+        public byte[] DataAsCopy
+        {
+            get
+            {
+                byte[] dataCopy = new byte[Data.Count];
+                Array.Copy(Data.Array, 4, dataCopy, 0, dataCopy.Length);
+                return dataCopy;
+            }
+        }
+
+        internal byte[] FullData
         {
             get;
         }
 
         public int Length
         {
-            get { return Data.Length; }
+            get => Data.Count;
         }
 
-        internal byte[] LengthData
+        internal int FullLength
         {
-            get => BitConverter.GetBytes(Length);
+            get => FullData.Length;
         }
+        
     }
 }

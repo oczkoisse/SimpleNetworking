@@ -88,8 +88,9 @@ namespace SimpleServer
 
             if (readDataOp.Successful)
             {
-                BeginRead();
                 Received?.Invoke(this, new ReceivedEventArgs(this, packet));
+                // Necessary that BeginRead is after raising the event
+                BeginRead();
             }
             else
             {

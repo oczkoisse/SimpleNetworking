@@ -1,10 +1,10 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
 using System.Threading;
-using System.Net.Sockets;
 using System.Text;
 using System.Linq;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 
 namespace SimpleServer.Tests
 {
@@ -131,10 +131,17 @@ namespace SimpleServer.Tests
     public class EchoServerTest
     {
         Server server;
+        const int totalClients = 1000;
+        const int messageByteCount = 10000;
+        const int messagesPerClient = 10;
+        CountdownEvent allClientsDone;
+        Random seeder = new Random();
 
         [TestInitialize()]
         public void Setup()
         {
+            allClientsDone = new CountdownEvent(totalClients);
+
             server = new Server(9000);
             server.Connected += (object sender, ConnectedEventArgs args) =>
             {
@@ -152,9 +159,8 @@ namespace SimpleServer.Tests
             server.Start();
         }
 
-        public static string RandomString(int length)
+        public static string RandomString(int length, Random random)
         {
-            Random random = new Random();
             const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
             return new string(Enumerable.Repeat(chars, length)
               .Select(s => s[random.Next(s.Length)]).ToArray());
@@ -162,11 +168,16 @@ namespace SimpleServer.Tests
 
         private void ClientThread()
         {
-            Connection conn = new Connection();
-            List<string> sent = new List<string>();
+            Random random;
+            lock(seeder)
+            {
+                random = new Random(seeder.Next());
+            }
             
-            const int totalSends = 10;
-            CountdownEvent countdown = new CountdownEvent(totalSends);
+            Connection conn = new Connection();
+            BlockingCollection<string> q = new BlockingCollection<string>();
+            
+            CountdownEvent allMessagesReceived = new CountdownEvent(messagesPerClient);
 
             conn.Received += (object sender, ReceivedEventArgs args) =>
             {
@@ -175,34 +186,41 @@ namespace SimpleServer.Tests
                     Packet packet = args.GetPacket();
                     byte[] rdata = packet.DataAsCopy;
                     string r = Encoding.ASCII.GetString(rdata);
-                    Assert.IsTrue(r == sent[countdown.CurrentCount]);
-                    countdown.Signal();
+                    string s = q.Take();
+
+                    if (r == s)
+                        allMessagesReceived.Signal();
+                    else
+                        Assert.Fail();
                 }
             };
 
             conn.Open(server.Address);
 
-            for (int j=0; j<10;j++)
+            for (int j=0; j<messagesPerClient; j++)
             {
-                string s = RandomString(10000);
+                string s = RandomString(messageByteCount, random);
                 Packet p = new Packet(Encoding.ASCII.GetBytes(s));
-                sent.Add(s);
+                q.Add(s);
                 conn.Write(p);
             }
+            q.CompleteAdding();
 
-            countdown.Wait();
+            allMessagesReceived.Wait();
             conn.Close();
+            allClientsDone.Signal();
         }
 
 
         [TestMethod()]
         public void PutLoad()
         {
-            for(int i=0; i<1000; i++)
+            for(int i=0; i<totalClients; i++)
             {
-                Thread t = new Thread(new ThreadStart(ClientThread));
+                Thread t = new Thread(ClientThread);
                 t.Start();
             }
+            allClientsDone.Wait();
         }
 
         [TestCleanup()]

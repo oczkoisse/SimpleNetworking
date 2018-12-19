@@ -107,10 +107,7 @@ namespace SimpleServer
         {
             if (conn != null)
             {
-                if (!connections.TryRemove(conn, out byte _))
-                {
-                    throw new ArgumentException("Connection passed to Disconnect() does not exist in Server (probably already disconnected)");
-                }
+                connections.TryRemove(conn, out byte _);
             }
             else
                 throw new ArgumentNullException("Connection argument is null");

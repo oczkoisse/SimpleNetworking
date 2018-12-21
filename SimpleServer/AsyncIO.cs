@@ -150,10 +150,7 @@ namespace SimpleServer
                 ThrownException = ex;
             }
 
-            if (!Threw)
-            {
-                Callback?.Invoke(this);
-            }
+            Callback?.Invoke(this);
         }
     }
 }

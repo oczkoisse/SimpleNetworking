@@ -13,9 +13,9 @@ namespace SimpleServer
         public event EventHandler<ConnectedEventArgs> Connected;
         
         /// <summary>
-        /// HashSet (faked) of <see cref="Connection"/>s
+        /// Hash set of <see cref="Connection"/>s
         /// </summary>
-        private ConcurrentDictionary<Connection, byte> connections;
+        private ConcurrentHashSet<Connection> connections;
 
         /// <summary>
         /// Underlying listener for this server
@@ -34,7 +34,7 @@ namespace SimpleServer
         public Server(IPAddress address, int port)
         {
             listener = new TcpListener(address, port);
-            connections = new ConcurrentDictionary<Connection, byte>();
+            connections = new ConcurrentHashSet<Connection>();
         }
 
         /// <summary>
@@ -106,7 +106,7 @@ namespace SimpleServer
                 BeginAccept();
 
                 Connection conn = new Connection(client, this);
-                if (connections.TryAdd(conn, 0))
+                if (connections.TryAdd(conn))
                 {
                     Connected?.Invoke(this, new ConnectedEventArgs(conn));
                 }
@@ -126,7 +126,7 @@ namespace SimpleServer
         {
             if (conn != null)
             {
-                connections.TryRemove(conn, out byte _);
+                connections.TryRemove(conn);
             }
             else
                 throw new ArgumentNullException("Connection argument is null");
@@ -151,10 +151,10 @@ namespace SimpleServer
         {
             // listener.Stop() does not close any accepted connections. 
             // so close them manually. This is thread-safe way of iterating.
-            foreach (var keyValue in connections)
+            foreach (var conn in connections)
             {
                 // Close the connection
-                keyValue.Key.Close();
+                conn.Close();
             }
             // Close the listener finally
             listener.Stop();

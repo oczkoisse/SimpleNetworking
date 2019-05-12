@@ -45,6 +45,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AsyncIO.cs" />
+    <Compile Include="ConcurrentHashSet.cs" />
     <Compile Include="Connection.cs" />
     <Compile Include="Packet.cs" />
     <Compile Include="ServerEventArgs.cs" />

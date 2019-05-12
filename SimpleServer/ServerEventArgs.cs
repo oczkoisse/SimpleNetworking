@@ -37,38 +37,31 @@ namespace SimpleServer
         }
     }
 
-    public abstract class PacketizedServerEventArgs : ServerEventArgs
+    public abstract class ServerEventArgsWithData : ServerEventArgs
     {
-        private readonly Packet packet;
-
-        public PacketizedServerEventArgs(Connection connection, Packet packet): base(connection, null)
+        public ServerEventArgsWithData(Connection connection, byte[] data): base(connection, null)
         {
-            SetPacket(ref this.packet, packet);
+            Data = data ?? throw new ArgumentNullException("Packet argument cannot be null");
         }
 
-        public PacketizedServerEventArgs(Exception ex, Connection connection, Packet packet) : base(connection, ex)
+        public ServerEventArgsWithData(Exception ex, Connection connection, byte[] data) : base(connection, ex)
         {
             if (ex == null)
                 throw new ArgumentNullException("Exception argument cannot be null");
         }
-
-        private void SetPacket(ref Packet packet, Packet packetValue)
-        {
-            packet = packetValue ?? throw new ArgumentNullException("Packet argument cannot be null");
-        }
-
-        public Packet GetPacket() => packet;
+        
+        public byte[] Data { get; }
     }
     
-    public class SentEventArgs : PacketizedServerEventArgs
+    public class SentEventArgs : ServerEventArgsWithData
     {
-        public SentEventArgs(Connection connection, Packet packet) : base(connection, packet) { }
-        public SentEventArgs(Exception ex, Connection connection, Packet packet): base(ex, connection, packet) { }
+        public SentEventArgs(Connection connection, byte[] data) : base(connection, data) { }
+        public SentEventArgs(Exception ex, Connection connection, byte[] data): base(ex, connection, data) { }
     }
 
-    public class ReceivedEventArgs: PacketizedServerEventArgs
+    public class ReceivedEventArgs: ServerEventArgsWithData
     {
-        public ReceivedEventArgs(Connection connection, Packet packet) : base(connection, packet) { }
-        public ReceivedEventArgs(Exception ex, Connection connection, Packet packet) : base(ex, connection, packet) { }
+        public ReceivedEventArgs(Connection connection, byte[] data) : base(connection, data) { }
+        public ReceivedEventArgs(Exception ex, Connection connection, byte[] data) : base(ex, connection, data) { }
     }
 }

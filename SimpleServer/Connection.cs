@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
 
@@ -14,11 +15,16 @@ namespace SimpleServer
         private readonly Server parentServer;
         private readonly TcpClient client;
 
+        private NetworkStream networkStream;
+
         internal Connection(TcpClient tcpClient, Server server)
         {
             client = tcpClient ?? throw new ArgumentNullException("TcpClient argument is null");
             parentServer = server ?? throw new ArgumentNullException("Server argument is null");
-            BeginRead();
+
+            networkStream = client.GetStream();
+
+            Read(new ReadIOState(4, false, true));
         }
 
         public Connection()
@@ -32,7 +38,10 @@ namespace SimpleServer
             if (IsServerConnection())
                 throw new InvalidOperationException("Open() cannot be called on a Connection returned by Server");
             client.Connect(endpoint);
-            BeginRead();
+
+            networkStream = client.GetStream();
+
+            Read(new ReadIOState(4, false, true));
         }
 
         public void Close()
@@ -42,83 +51,116 @@ namespace SimpleServer
         }
 
         public bool IsServerConnection() => parentServer != null;
-
-        private bool TryGetStream(out NetworkStream networkStream)
+       
+        private void Read(IOState state)
         {
             try
             {
-                networkStream = client.GetStream();
+                networkStream.BeginRead(state.Data, 0, state.Size, EndOrContinueRead, state);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                networkStream = null;
+                Received?.Invoke(this, new ReceivedEventArgs(ex, this, state.Data));
             }
-            return networkStream != null;
         }
 
-        private void BeginRead()
+        private void EndOrContinueRead(IAsyncResult ar)
         {
-            if (TryGetStream(out NetworkStream networkStream))
+            ReadIOState state = ar.AsyncState as ReadIOState;
+
+            // Get the number of bytes read and advance position by the same amount
+            try
             {
-                AsyncReadOperation readOp = new AsyncReadOperation(4, networkStream, OnReadLength);
-                readOp.Start();
+                int bytesRead = networkStream.EndRead(ar);
+                if (bytesRead > 0)
+                    state.AdvancePosition(bytesRead);
+            }
+            catch (Exception ex)
+            {
+                Received.Invoke(this, new ReceivedEventArgs(ex, this, state.Data));
+            }
+
+            if (state.Remaining > 0)
+            {
+                Read(state);
+            }
+            else if (state.LengthRead)
+            {
+                int length = BitConverter.ToInt32(state.Data, 0);
+                Read(new ReadIOState(length, true, false));
+            }
+            else
+            {
+                Received?.Invoke(this, new ReceivedEventArgs(this, state.Data));
+                Read(new ReadIOState(4, false, true));
             }
         }
         
-
-        private void OnReadLength(AsyncReadOperation readLengthOp)
+        public void Write(short data, bool notifyOnSuccess = false)
         {
-            Packet packet = new Packet(readLengthOp.Bytes);
-
-            if (readLengthOp.Successful)
-            {
-                int length = BitConverter.ToInt32(readLengthOp.Bytes, 0);
-                AsyncReadOperation readDataOp = new AsyncReadOperation(length, readLengthOp.UnderlyingStream, OnReadData);
-                readDataOp.Start();
-            }
-            else
-            {
-                Received?.Invoke(this, new ReceivedEventArgs(readLengthOp.ThrownException, this, packet));
-            }
+            byte[] dataArr = BitConverter.GetBytes(data);
+            Write(dataArr, notifyOnSuccess);
         }
 
-        private void OnReadData(AsyncReadOperation readDataOp)
+        public void Write(int data, bool notifyOnSuccess = false)
         {
-            Packet packet = new Packet(readDataOp.Bytes);
-
-            if (readDataOp.Successful)
-            {
-                Received?.Invoke(this, new ReceivedEventArgs(this, packet));
-                // Necessary that BeginRead is after raising the event
-                BeginRead();
-            }
-            else
-            {
-                Received?.Invoke(this, new ReceivedEventArgs(readDataOp.ThrownException, this, packet));
-            }
+            byte[] dataArr = BitConverter.GetBytes(data);
+            Write(dataArr, notifyOnSuccess);
         }
 
-        // Write a packet to connection. Not thread-safe.
-        public void Write(Packet packet)
+        public void Write(long data, bool notifyOnSuccess = false)
         {
-            if (TryGetStream(out NetworkStream networkStream))
-            {
-                AsyncWriteOperation writeOp = new AsyncWriteOperation(packet.FullData, networkStream, OnWriteData);
-                writeOp.Start();
-            }
+            byte[] dataArr = BitConverter.GetBytes(data);
+            Write(dataArr, notifyOnSuccess);
         }
 
-        private void OnWriteData(AsyncWriteOperation writeOp)
+        public void Write(float data, bool notifyOnSuccess = false)
         {
-            Packet packet = new Packet(writeOp.Bytes);
+            byte[] dataArr = BitConverter.GetBytes(data);
+            Write(dataArr, notifyOnSuccess);
+        }
 
-            if (writeOp.Successful)
+        public void Write(double data, bool notifyOnSuccess = false)
+        {
+            byte[] dataArr = BitConverter.GetBytes(data);
+            Write(dataArr, notifyOnSuccess);
+        }
+
+        public void Write(bool data, bool notifyOnSuccess = false)
+        {
+            byte[] dataArr = BitConverter.GetBytes(data);
+            Write(dataArr, notifyOnSuccess);
+        }
+
+        public void Write(byte[] data, bool notifyOnSuccess = true)
+        {
+            try
             {
-                Sent?.Invoke(this, new SentEventArgs(this, packet));
+                networkStream.BeginWrite(data, 0, data.Length, EndWrite, new WriteIOState(data, notifyOnSuccess));
             }
-            else
+            catch (Exception ex)
             {
-                Sent?.Invoke(this, new SentEventArgs(writeOp.ThrownException, this, packet));
+                Sent?.Invoke(this, new SentEventArgs(ex, this, data));
+            }
+        }
+     
+
+        private void EndWrite(IAsyncResult ar)
+        {
+            IOState state = ar.AsyncState as WriteIOState;
+
+            try
+            {
+                networkStream.EndWrite(ar);
+
+                state.AdvancePosition(state.Size);
+
+                if (state.NotifySuccess)
+                    Sent?.Invoke(this, new SentEventArgs(this, state.Data));
+            }
+            catch (Exception ex)
+            {
+                Sent?.Invoke(this, new SentEventArgs(ex, this, state.Data));
             }
         }
     }

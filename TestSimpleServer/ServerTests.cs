@@ -59,9 +59,12 @@ namespace SimpleServer.Tests
                 if (args.OperationSucceeded)
                 {
                     Connection conn = args.GetConnection();
-                    Packet packet = new Packet(Encoding.ASCII.GetBytes(sent));
+                    byte[] data = Encoding.ASCII.GetBytes(sent);
                     for (int i = 0; i < totalSends; i++)
-                        conn.Write(packet);
+                    {
+                        conn.Write(data.Length);
+                        conn.Write(data);
+                    }
                     conn.Close();
                 }
             };
@@ -74,8 +77,7 @@ namespace SimpleServer.Tests
             {
                 if (args.OperationSucceeded)
                 {
-                    Packet packet = args.GetPacket();
-                    byte[] data = packet.DataAsCopy;
+                    byte[] data = args.Data;
                     string recvd = Encoding.ASCII.GetString(data);
                     Assert.IsTrue(recvd == sent);
                     countdown.Signal();
@@ -105,8 +107,7 @@ namespace SimpleServer.Tests
                     {
                         if (rargs.OperationSucceeded)
                         {
-                            Packet rpacket = rargs.GetPacket();
-                            byte[] rdata = rpacket.DataAsCopy;
+                            byte[] rdata = rargs.Data;
                             string recvd = Encoding.ASCII.GetString(rdata);
                             Assert.IsTrue(recvd == sent);
                             countdown.Signal();
@@ -118,9 +119,12 @@ namespace SimpleServer.Tests
             Connection client = new Connection();
             client.Open(server.Address);
 
-            Packet packet = new Packet(Encoding.ASCII.GetBytes(sent));
+            byte[] data = Encoding.ASCII.GetBytes(sent);
             for (int i = 0; i < totalReceives; i++)
-                client.Write(packet);
+            {
+                client.Write(data.Length);
+                client.Write(data);
+            }
             
             countdown.Wait();
             client.Close();
@@ -150,9 +154,10 @@ namespace SimpleServer.Tests
                     Connection conn = args.GetConnection();
                     conn.Received += (object rsender, ReceivedEventArgs rargs) =>
                     {
-                        Packet packet = rargs.GetPacket();
+                        byte[] data = rargs.Data;
                         Connection rconn = rargs.GetConnection();
-                        rconn.Write(packet);
+                        rconn.Write(data.Length);
+                        rconn.Write(data);
                     };
                 }
             };
@@ -183,8 +188,7 @@ namespace SimpleServer.Tests
             {
                 if (args.OperationSucceeded)
                 {
-                    Packet packet = args.GetPacket();
-                    byte[] rdata = packet.DataAsCopy;
+                    byte[] rdata = args.Data;
                     string r = Encoding.ASCII.GetString(rdata);
                     string s = q.Take();
 
@@ -200,9 +204,10 @@ namespace SimpleServer.Tests
             for (int j=0; j<messagesPerClient; j++)
             {
                 string s = RandomString(messageByteCount, random);
-                Packet p = new Packet(Encoding.ASCII.GetBytes(s));
+                byte[] data = Encoding.ASCII.GetBytes(s);
                 q.Add(s);
-                conn.Write(p);
+                conn.Write(data.Length);
+                conn.Write(data);
             }
             q.CompleteAdding();
 

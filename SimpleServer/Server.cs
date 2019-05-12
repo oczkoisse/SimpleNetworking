@@ -156,6 +156,10 @@ namespace SimpleServer
                 // Close the connection
                 conn.Close();
             }
+
+            // Clear internal records of all connections
+            connections.Clear();
+
             // Close the listener finally
             listener.Stop();
         }

@@ -3,10 +3,9 @@ using System;
 using System.Threading;
 using System.Text;
 using System.Linq;
-using System.Collections.Generic;
 using System.Collections.Concurrent;
 
-namespace SimpleServer.Tests
+namespace SimpleNetworking.Tests
 {
     [TestClass()]
     public class ServerTests

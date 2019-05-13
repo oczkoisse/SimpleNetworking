@@ -1,9 +1,8 @@
 ﻿using System;
-using System.IO;
 using System.Net;
 using System.Net.Sockets;
 
-namespace SimpleServer
+namespace SimpleNetworking
 {
     public class Connection
     {
@@ -21,7 +20,7 @@ namespace SimpleServer
         {
             client = tcpClient ?? throw new ArgumentNullException("TcpClient argument is null");
             parentServer = server ?? throw new ArgumentNullException("Server argument is null");
-
+            
             networkStream = client.GetStream();
 
             Read(new ReadIOState(4, false, true));

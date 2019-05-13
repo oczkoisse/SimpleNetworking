@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace SimpleServer
+namespace SimpleNetworking
 {
     public abstract class IOState
     {

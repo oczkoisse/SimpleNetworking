@@ -2,7 +2,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 
-namespace SimpleServer
+namespace SimpleNetworking
 {
     internal class ConcurrentHashSet<T>: IEnumerable<T>
     {

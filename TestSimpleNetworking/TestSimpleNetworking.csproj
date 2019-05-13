@@ -8,8 +8,8 @@
     <ProjectGuid>{0CD72C51-1DD5-4E75-A206-B08ED38DBB46}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>TestSimpleServer</RootNamespace>
-    <AssemblyName>TestSimpleServer</AssemblyName>
+    <RootNamespace>SimpleNetworking.Tests</RootNamespace>
+    <AssemblyName>TestSimpleNetworking</AssemblyName>
     <TargetFrameworkVersion>v4.7.1</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <ProjectTypeGuids>{3AC096D0-A1C2-E12C-1390-A8335801FDAB};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
@@ -56,9 +56,9 @@
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\SimpleServer\SimpleServer.csproj">
-      <Project>{243f0485-67b4-4c83-8f9c-d586ece951d7}</Project>
-      <Name>SimpleServer</Name>
+    <ProjectReference Include="..\SimpleNetworking\SimpleNetworking.csproj">
+      <Project>{6234bd74-f230-4f70-94f1-c196a9569794}</Project>
+      <Name>SimpleNetworking</Name>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(VSToolsPath)\TeamTest\Microsoft.TestTools.targets" Condition="Exists('$(VSToolsPath)\TeamTest\Microsoft.TestTools.targets')" />

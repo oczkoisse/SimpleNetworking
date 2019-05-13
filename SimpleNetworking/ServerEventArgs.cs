@@ -1,7 +1,6 @@
 ﻿using System;
-using System.Net.Sockets;
 
-namespace SimpleServer
+namespace SimpleNetworking
 {
     public abstract class ServerEventArgs
     {
